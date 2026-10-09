@@ -57,6 +57,8 @@ Double-click prompts UAC right away (admin required), no right-click needed.
 
 ## Usage
 
+<p align="center"><img src="assets/demo.gif" alt="UI preview"></p>
+
 UI: pick 「Disable updates / Restore updates」, hit OK. The big indicator shows the state, details and logs below.
 
 ```text

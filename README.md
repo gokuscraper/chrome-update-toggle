@@ -57,6 +57,8 @@ dotnet publish -c Release --no-self-contained -o bin/Release/fx/publish
 
 ## 使用
 
+<p align="center"><img src="assets/demo.gif" alt="界面预览"></p>
+
 界面：单选「禁止更新 / 恢复更新」，点「确定」。右上角大字看状态，下面是明细和日志。
 
 ```text
