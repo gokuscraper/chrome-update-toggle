@@ -4,6 +4,7 @@ obj/
 # runtime data (machine-specific baselines & logs)
 baseline/
 test-*-result.log
+test-fake-service.log
 bat-debug.log
 restore-check.log
 task-check.log
