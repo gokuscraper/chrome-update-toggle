@@ -24,7 +24,7 @@ Chrome ships 50+ releases a year, nags you from the corner, and occasionally bre
 
 ## 📸 Screenshots
 
-![Main window: pick an action, big status indicator — green means updates are normal](assets/screenshot.png)
+![Main window: pick an action, big status indicator — green means updates are normal](assets/demo.gif)
 
 ## Comparison
 
