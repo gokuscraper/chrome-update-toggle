@@ -1,0 +1,14 @@
+# build outputs
+bin/
+obj/
+# runtime data (machine-specific baselines & logs)
+baseline/
+test-*-result.log
+bat-debug.log
+restore-check.log
+task-check.log
+status-check.log
+last-error.log
+# user-specific
+*.user
+.vs/
