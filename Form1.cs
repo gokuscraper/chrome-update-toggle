@@ -27,7 +27,15 @@ public partial class MainForm : Form
         var grp = new GroupBox { Text = "请选择操作", Location = new Point(12, 8), Size = new Size(594, 60) };
         rbDisable = new RadioButton { Text = "禁止更新", Location = new Point(20, 24), Size = new Size(120, 24), Checked = true };
         rbEnable = new RadioButton { Text = "恢复更新", Location = new Point(160, 24), Size = new Size(120, 24) };
-        grp.Controls.AddRange(new Control[] { rbDisable, rbEnable });
+        var lblAuthor = new Label
+        {
+            Text = "作者：开源探长彪哥",
+            Location = new Point(414, 24),
+            Size = new Size(170, 24),
+            TextAlign = ContentAlignment.MiddleRight,
+            ForeColor = Color.Gray,
+        };
+        grp.Controls.AddRange(new Control[] { rbDisable, rbEnable, lblAuthor });
 
         btnOK = new Button { Text = "确定", Location = new Point(12, 76), Size = new Size(140, 36) };
         btnRefresh = new Button { Text = "刷新状态", Location = new Point(160, 76), Size = new Size(140, 36) };
