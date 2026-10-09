@@ -22,6 +22,10 @@ Chrome ships 50+ releases a year, nags you from the corner, and occasionally bre
 - **Bilingual**: switch between 中文 and English from a dropdown, diagnostics bundle follows along.
 - **Debuggable**: every run logs to disk, one click exports a diagnostics bundle (state + baseline + logs + version).
 
+## 📸 Screenshots
+
+![Main window: pick an action, big status indicator — green means updates are normal](assets/screenshot.png)
+
 ## Comparison
 
 | Feature | ChromeUpdateToggle | BAT script | Manual trio | Enterprise policy templates |
@@ -56,8 +60,6 @@ dotnet publish -c Release --no-self-contained -o bin/Release/fx/publish
 Double-click prompts UAC right away (admin required), no right-click needed.
 
 ## Usage
-
-<p align="center"><img src="assets/demo.gif" alt="UI preview"></p>
 
 UI: pick 「Disable updates / Restore updates」, hit OK. The big indicator shows the state, details and logs below.
 

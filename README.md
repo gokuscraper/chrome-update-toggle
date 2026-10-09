@@ -22,6 +22,10 @@ Chrome 一年更新 50 多个版本，右上角天天催，偶尔还把线上项
 - **中英双语**：界面下拉一切换，诊断包跟着变英文，发给老外也能用。
 - **出问题能定位**：每次运行落盘日志，一键导出诊断包（状态 + 基线 + 日志 + 版本）。
 
+## 📸 软件截图
+
+![主界面：单选操作，大字状态，绿色即更新正常](assets/screenshot.png)
+
 ## 对比表
 
 | 功能 | ChromeUpdateToggle | BAT 脚本 | 手动三件套 | 企业策略模板 |
@@ -56,8 +60,6 @@ dotnet publish -c Release --no-self-contained -o bin/Release/fx/publish
 双击即弹 UAC（要管理员），不用右键。
 
 ## 使用
-
-<p align="center"><img src="assets/demo.gif" alt="界面预览"></p>
 
 界面：单选「禁止更新 / 恢复更新」，点「确定」。右上角大字看状态，下面是明细和日志。
 
