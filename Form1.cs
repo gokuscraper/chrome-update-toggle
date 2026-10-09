@@ -6,6 +6,7 @@ public partial class MainForm : Form
     private RadioButton rbEnable = null!;
     private Button btnOK = null!;
     private Button btnRefresh = null!;
+    private Button btnExport = null!;
     private Label lblStatus = null!;
     private TextBox txtState = null!;
     private TextBox txtLog = null!;
@@ -18,7 +19,7 @@ public partial class MainForm : Form
 
     private void InitializeComponent()
     {
-        Text = "Chrome 自动更新开关 (155/156)";
+        Text = $"Chrome 自动更新开关 v{Logger.Version}";
         Size = new Size(640, 560);
         StartPosition = FormStartPosition.CenterScreen;
         FormBorderStyle = FormBorderStyle.FixedDialog;
@@ -39,9 +40,10 @@ public partial class MainForm : Form
 
         btnOK = new Button { Text = "确定", Location = new Point(12, 76), Size = new Size(140, 36) };
         btnRefresh = new Button { Text = "刷新状态", Location = new Point(160, 76), Size = new Size(140, 36) };
+        btnExport = new Button { Text = "导出诊断", Location = new Point(486, 76), Size = new Size(120, 36) };
         lblStatus = new Label
         {
-            Location = new Point(320, 76), Size = new Size(286, 36),
+            Location = new Point(320, 76), Size = new Size(158, 36),
             Font = new Font(Font.FontFamily, 14, FontStyle.Bold),
             TextAlign = ContentAlignment.MiddleLeft,
         };
@@ -60,8 +62,9 @@ public partial class MainForm : Form
 
         btnOK.Click += async (_, _) => await RunSelectedAsync();
         btnRefresh.Click += (_, _) => RefreshState();
+        btnExport.Click += async (_, _) => await ExportAsync();
 
-        Controls.AddRange(new Control[] { grp, btnOK, btnRefresh, lblStatus, txtState, txtLog });
+        Controls.AddRange(new Control[] { grp, btnOK, btnRefresh, btnExport, lblStatus, txtState, txtLog });
     }
 
     private void RefreshState()
@@ -110,12 +113,34 @@ public partial class MainForm : Form
 
     private void SetBusy(bool enabled)
     {
-        rbDisable.Enabled = rbEnable.Enabled = btnOK.Enabled = btnRefresh.Enabled = enabled;
+        rbDisable.Enabled = rbEnable.Enabled = btnOK.Enabled = btnRefresh.Enabled = btnExport.Enabled = enabled;
+    }
+
+    private async Task ExportAsync()
+    {
+        using var dlg = new SaveFileDialog
+        {
+            Filter = "ZIP 压缩包|*.zip",
+            FileName = $"ChromeUpdateToggle-诊断-{DateTime.Now:yyyyMMdd-HHmmss}.zip",
+            InitialDirectory = Environment.GetFolderPath(Environment.SpecialFolder.Desktop),
+        };
+        if (dlg.ShowDialog(this) != DialogResult.OK) return;
+        SetBusy(false);
+        try
+        {
+            await Task.Run(() => Logger.ExportDiagnostics(dlg.FileName, Logger.Tee(Log)));
+        }
+        catch (Exception ex)
+        {
+            Log("[ERROR] " + ex.Message);
+        }
+        SetBusy(true);
     }
 
     private void Log(string s)
     {
         if (InvokeRequired) { Invoke(Log, s); return; }
         txtLog.AppendText($"[{DateTime.Now:HH:mm:ss}] {s}\r\n");
+        Logger.Log(s);
     }
 }

@@ -15,6 +15,24 @@ static class Program
             return RunAction(l => UpdateManager.Enable(l), args);
         if (args.Any(a => a is "--reset" or "3"))
             return RunAction(l => UpdateManager.ResetToDefaults(l), args);
+        if (args.Any(a => a is "--export-diagnostics"))
+        {
+            // 导出诊断包(只读为主, 不提权)
+            try
+            {
+                string zip = args.SkipWhile(a => a != "--export-diagnostics").Skip(1)
+                    .FirstOrDefault()
+                    ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Desktop),
+                        $"ChromeUpdateToggle-诊断-{DateTime.Now:yyyyMMdd-HHmmss}.zip");
+                Logger.ExportDiagnostics(zip, Logger.Tee(Console.WriteLine));
+                return 0;
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine("[ERROR] " + ex.Message);
+                return 2;
+            }
+        }
         if (args.Any(a => a is "--status"))
         {
             // 只读查询, 不提权
@@ -42,16 +60,16 @@ static class Program
     {
         if (UpdateManager.IsAdministrator())
         {
+            var tee = Logger.Tee(Console.WriteLine);
             try
             {
-                action(Console.WriteLine);
+                action(tee);
                 return 0;
             }
             catch (Exception ex)
             {
-                Console.Error.WriteLine("[ERROR] " + ex.Message);
-                try { File.WriteAllText(Path.Combine(AppContext.BaseDirectory, "last-error.log"), ex.ToString()); }
-                catch { }
+                tee("[ERROR] " + ex.Message);
+                Logger.Log(ex.ToString());
                 return 2;
             }
         }
@@ -88,16 +106,18 @@ static class Program
     {
         if (UpdateManager.IsAdministrator())
         {
+            // UI 传的 Log 自带落盘, CLI 才包 Tee
+            var write = log ?? Logger.Tee(Console.WriteLine);
             try
             {
-                var write = log ?? Console.WriteLine;
                 if (actionArg == "--disable") UpdateManager.Disable(write);
                 else UpdateManager.Enable(write);
                 return 0;
             }
             catch (Exception ex)
             {
-                (log ?? Console.Error.WriteLine)("[ERROR] " + ex.Message);
+                write("[ERROR] " + ex.Message);
+                Logger.Log(ex.ToString());
                 return 2;
             }
         }

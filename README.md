@@ -25,8 +25,11 @@ ChromeUpdateToggle.exe            # 打开界面
 ChromeUpdateToggle.exe --disable  # 禁止更新（需管理员，exit 0 成功）
 ChromeUpdateToggle.exe --enable   # 按最新基线恢复
 ChromeUpdateToggle.exe --reset    # 回出厂默认（服务Auto/任务启用/删策略键/解锁）
-ChromeUpdateToggle.exe --status   # 只读查状态，免 UAC
+ChromeUpdateToggle.exe --status   # 只读查状态
+ChromeUpdateToggle.exe --export-diagnostics [zip路径]  # 导出诊断包（默认放桌面）
 ```
+
+每次运行都往 exe 旁 `logs\<日期>.log` 追加时间戳日志；界面另有「导出诊断」按钮，打包 `状态.txt + baseline.json + 近3天日志 + 版本.txt` 为 zip，别人用出问题直接发这个包回来定位。
 
 基线存在 exe 旁 `baseline\<时间>-disable\baseline.json`（服务 StartMode / 任务状态 / 注册表值 / 文件列表 / Elevation 记录），恢复时自动读最新一份；无基线时按出厂默认恢复。
 
