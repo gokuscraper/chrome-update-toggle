@@ -8,7 +8,7 @@ Chrome 自动更新开关（Windows，单文件 EXE）。一键禁止 / 恢复 C
 
 Chrome 156 的更新器已转纯服务 + COM 拉起模式，光禁服务拦不住（`prefs.json last_checked` + `updater.log` 显示服务 Stopped 照样每天 ForceInstall）。所以要掐三处：
 
-1. **服务**：只禁 2 个 Updater 自动服务（`GoogleUpdaterService*` / `GoogleUpdaterInternalService*`），`GoogleChromeElevationService` 保持 Manual 不动（它只是装软件时提权用）。
+1. **服务**：只禁 2 个 Updater 自动服务（`GoogleUpdaterService*` / `GoogleUpdaterInternalService*`），`GoogleChromeElevationService` 保持 Manual 不动（它只是装软件时提权用）。服务发现是双保险：服务名命中模式 **且** 可执行路径含 `Google`，防第三方撞名误伤（`test-fake-service.ps1` 反向验证过）。
 2. **注册表**：官方 kill-switch，`HKLM\SOFTWARE\Policies\Google\Update` 下 `UpdateDefault=0` 等 4 个 DWORD，COM 拉起也认。
 3. **文件锁**：对本机实际存在的 2 个更新主程序加 DENY（执行+写），服务/COM 拉起也拒绝访问——
    - `C:\Program Files (x86)\Google\GoogleUpdater\<版本>\updater.exe`（156 现役）
@@ -50,3 +50,4 @@ dotnet publish -c Release --no-self-contained -o bin/Release/fx/publish
 - `Form1.cs` — 单选+确定 UI，大字状态 + 明细 + 日志
 - `Program.cs` — CLI 入口（非管理员跑写操作时自动拉起提权副本）
 - `app.manifest` — `requireAdministrator`
+- ![image-20261009195104454](C:\Users\27598\AppData\Roaming\Typora\typora-user-images\image-20261009195104454.png)

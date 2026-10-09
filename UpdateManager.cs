@@ -61,15 +61,27 @@ public static class UpdateManager
         return new WindowsPrincipal(id).IsInRole(WindowsBuiltInRole.Administrator);
     }
 
-    /// <summary>本机实际存在的 Google 更新服务(只含 Updater 系, Elevation  excluded)。</summary>
+    /// <summary>
+    /// 本机实际存在的 Google 更新服务(只含 Updater 系, Elevation excluded)。
+    /// 双保险: 服务名命中模式 且 可执行路径含 Google, 缺一不要, 防第三方撞名误伤。
+    /// </summary>
     public static List<string> FindUpdaterServices()
     {
-        return ServiceController.GetServices()
-            .Select(s => s.ServiceName)
-            .Where(n => n.Contains("gupdate", StringComparison.OrdinalIgnoreCase)
-                     || n.StartsWith("GoogleUpdater", StringComparison.OrdinalIgnoreCase))
-            .OrderBy(n => n)
-            .ToList();
+        var result = new List<string>();
+        using var searcher = new ManagementObjectSearcher(
+            "SELECT Name, PathName FROM Win32_Service");
+        foreach (ManagementObject mo in searcher.Get())
+        {
+            string name = mo["Name"]?.ToString() ?? "";
+            string path = mo["PathName"]?.ToString() ?? "";
+            bool nameHit = name.Contains("gupdate", StringComparison.OrdinalIgnoreCase)
+                        || name.StartsWith("GoogleUpdater", StringComparison.OrdinalIgnoreCase);
+            if (!nameHit) continue;
+            if (!path.Contains("Google", StringComparison.OrdinalIgnoreCase)) continue;
+            result.Add(name);
+        }
+        result.Sort(StringComparer.OrdinalIgnoreCase);
+        return result;
     }
 
     public static string GetServiceStartMode(string name)
@@ -271,8 +283,15 @@ public static class UpdateManager
         {
             foreach (var s in base_.Services)
             {
-                SetStartMode(s.Name, s.StartMode);
-                log($"  {s.Name} -> {s.StartMode} (基线)");
+                try
+                {
+                    SetStartMode(s.Name, s.StartMode);
+                    log($"  {s.Name} -> {s.StartMode} (基线)");
+                }
+                catch (Exception ex)
+                {
+                    log($"  [SKIP] {s.Name} 不存在或改不动: {ex.Message}");
+                }
             }
         }
         else
