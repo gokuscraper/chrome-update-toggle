@@ -1,57 +1,109 @@
-# ChromeUpdateToggle
+<div align="center">
+  <h1>🐢 ChromeUpdateToggle</h1>
+  <p><em>一个开关，管住 Chrome 自动更新。</em></p>
+</div>
+<p align="center">
+  <a href="README.md"><img src="https://img.shields.io/badge/中文-blue?style=flat-square" alt="中文"></a>
+  <a href="README_EN.md"><img src="https://img.shields.io/badge/English-gray?style=flat-square" alt="English"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache_2.0-green?style=flat-square" alt="License"></a>
+  <img src="https://img.shields.io/badge/C%23-WinForms-512BD4?style=flat-square" alt="C# WinForms">
+  <img src="https://img.shields.io/badge/.NET-8.0-512BD4?style=flat-square" alt=".NET 8">
+  <img src="https://img.shields.io/badge/Windows-10%2F11-0078D4?style=flat-square" alt="Windows">
+</p>
+<p align="center"><img src="assets/banner.png" alt="ChromeUpdateToggle banner"></p>
 
-Chrome 自动更新开关（Windows，单文件 EXE）。一键禁止 / 恢复 Chrome 自动更新，带基线快照，恢复时精确还原改动前的状态。
+Chrome 一年更新 50 多个版本，右上角天天催，偶尔还把线上项目的 API 炸了。这个工具只做一件事：禁止时一次掐断更新链，恢复时按基线精确还原。
 
-前身是 `chrome-update-toggle.bat`，因 BAT 在括号路径、重定向、`for` 通配符上的解析坑太多，重写为 C# WinForms。
+## 为什么选它？
 
-## 原理（按本机 155/156 实测，不照抄网文）
+- **三处齐掐才拦得住**：只禁服务没用，156 的更新器服务停了也能被 COM 拉起。工具同时掐服务、注册表策略、主程序文件锁。
+- **恢复不是瞎恢复**：禁止前先给机器拍基线快照，恢复时照单还原，而不是一刀切回默认值。
+- **先告诉你现在啥状态**：红（已禁止）/绿（正常）/橙（不一致）大字显示，不用猜。
+- **中英双语**：界面下拉一切换，诊断包跟着变英文，发给老外也能用。
+- **出问题能定位**：每次运行落盘日志，一键导出诊断包（状态 + 基线 + 日志 + 版本）。
 
-Chrome 156 的更新器已转纯服务 + COM 拉起模式，光禁服务拦不住（`prefs.json last_checked` + `updater.log` 显示服务 Stopped 照样每天 ForceInstall）。所以要掐三处：
+## 对比表
 
-1. **服务**：只禁 2 个 Updater 自动服务（`GoogleUpdaterService*` / `GoogleUpdaterInternalService*`），`GoogleChromeElevationService` 保持 Manual 不动（它只是装软件时提权用）。服务发现是双保险：服务名命中模式 **且** 可执行路径含 `Google`，防第三方撞名误伤（`test-fake-service.ps1` 反向验证过）。
-2. **注册表**：官方 kill-switch，`HKLM\SOFTWARE\Policies\Google\Update` 下 `UpdateDefault=0` 等 4 个 DWORD，COM 拉起也认。
-3. **文件锁**：对本机实际存在的 2 个更新主程序加 DENY（执行+写），服务/COM 拉起也拒绝访问——
-   - `C:\Program Files (x86)\Google\GoogleUpdater\<版本>\updater.exe`（156 现役）
-   - `C:\Program Files (x86)\Google\Update\GoogleUpdate.exe`（legacy 残留）
+| 功能 | ChromeUpdateToggle | BAT 脚本 | 手动三件套 | 企业策略模板 |
+|------|:---:|:---:|:---:|:---:|
+| 一键禁止/恢复 | ✅ | ✅ | ❌ | ❌ |
+| 基线快照 + 精确还原 | ✅ | ❌ | ❌ | ❌ |
+| 当前状态显示 | ✅ | ❌ | ❌ | ❌ |
+| 中英双语界面 | ✅ | ❌ | ❌ | ❌ |
+| 诊断包导出 | ✅ | ❌ | ❌ | ❌ |
+| 单文件 EXE | ✅ | ❌ | ❌ | ❌ |
+| 免费 | ✅ | ✅ | ✅ | ✅ |
 
-计划任务（`GoogleUpdateTaskMachine*` / `GoogleUpdaterTaskSystem*`）有则禁、无则跳过（156 上已基本无任务）。
+BAT 脚本指本项目前身的 `chrome-update-toggle.bat`，能干活但栽在括号路径、重定向歧义、`for` 通配符三个解析坑里。
 
-## 用法
+手动三件套指 `services.msc` + 任务计划 + 注册表手改，步骤散、没基线、回滚靠记忆。
 
-双击即弹 UAC（manifest `requireAdministrator`，免右键）。界面：单选「禁止更新/恢复更新」+「确定」，右上角大字显示当前状态（**已禁止更新**红 / **更新正常**绿 / **状态不一致**橙）+ 明细 + 日志。
+企业策略模板指 Google 官方 ADMX（含 `UpdateDefault` 等），免费但要自己配 GPO/注册表，无界面、无基线、无状态。
 
-```text
-ChromeUpdateToggle.exe            # 打开界面（默认中文，界面下拉可切 English，即时生效并记住）
-ChromeUpdateToggle.exe --disable  # 禁止更新（需管理员，exit 0 成功）
-ChromeUpdateToggle.exe --enable   # 按最新基线恢复
-ChromeUpdateToggle.exe --reset    # 回出厂默认（服务Auto/任务启用/删策略键/解锁）
-ChromeUpdateToggle.exe --status   # 只读查状态
-ChromeUpdateToggle.exe --lang en|zh  # 切换语言（命令行/UI 共用 exe 旁 lang.txt）
-ChromeUpdateToggle.exe --export-diagnostics [zip路径]  # 导出诊断包（默认放桌面）
-```
+## 安装 / 快速开始
 
-每次运行都往 exe 旁 `logs\<日期>.log` 追加时间戳日志；界面另有「导出诊断」按钮，打包 `状态.txt + baseline.json + 近3天日志 + 版本.txt` 为 zip，别人用出问题直接发这个包回来定位。
+两个版本二选一，都是单个 EXE：
 
-基线存在 exe 旁 `baseline\<时间>-disable\baseline.json`（服务 StartMode / 任务状态 / 注册表值 / 文件列表 / Elevation 记录），恢复时自动读最新一份；无基线时按出厂默认恢复。
-
-## 分发
-
-- `bin/Release/fx/publish/ChromeUpdateToggle.exe`（约 2MB，框架依赖，需 .NET 8 Desktop 运行时）——本机自用。
-- `bin/Release/net8.0-windows/win-x64/publish/ChromeUpdateToggle.exe`（约 154MB，自包含）——发给没装 .NET 的机器，单个文件即跑。
+- **1.7MB 版**（本机自用）：`bin/Release/fx/publish/ChromeUpdateToggle.exe`，需要装 .NET 8 Desktop 运行时。
+- **154MB 版**（发给别人）：`bin/Release/net8.0-windows/win-x64/publish/ChromeUpdateToggle.exe`，自带运行库，没装 .NET 也能跑。
 
 ```bash
+# 自己打包
 dotnet publish -c Release                                  # 自包含单文件
 dotnet publish -c Release --no-self-contained -o bin/Release/fx/publish
 ```
 
-## 测试
+双击即弹 UAC（要管理员），不用右键。
 
-管理员 PowerShell 跑 `test-csharp.ps1`：记录基线 → `--disable` 断言（服务全 Disabled / `UpdateDefault=0` / 任务 Disabled / 基线生成 / 双 DENY + 写拦截）→ `--enable` 断言（DENY 清 / 服务回基线）→ `--reset` 断言（服务全 Auto / 任务无 Disabled / 策略键删除）。21/21 PASS。
+## 使用
 
-## 源码结构
+界面：单选「禁止更新 / 恢复更新」，点「确定」。右上角大字看状态，下面是明细和日志。
 
-- `UpdateManager.cs` — 服务（WMI）/ 任务（schtasks）/ 注册表 / ACL（FileSecurity）/ 基线 JSON / 状态判定三支柱
-- `Form1.cs` — 单选+确定 UI，大字状态 + 明细 + 日志
-- `Program.cs` — CLI 入口（非管理员跑写操作时自动拉起提权副本）
-- `app.manifest` — `requireAdministrator`
-- ![image-20261009195104454](C:\Users\27598\AppData\Roaming\Typora\typora-user-images\image-20261009195104454.png)
+```text
+ChromeUpdateToggle.exe            # 打开界面（默认中文，下拉可切 English）
+ChromeUpdateToggle.exe --disable  # 禁止更新，exit 0 成功
+ChromeUpdateToggle.exe --enable   # 按最新基线恢复
+ChromeUpdateToggle.exe --reset    # 回出厂默认（服务Auto/任务启用/删策略键/解锁）
+ChromeUpdateToggle.exe --status   # 只读查状态
+ChromeUpdateToggle.exe --lang en|zh  # 切换语言
+ChromeUpdateToggle.exe --export-diagnostics [zip路径]  # 导出诊断包，默认放桌面
+```
+
+`--status` 实测输出长这样：
+
+```text
+更新正常 (服务全Auto + 无禁用策略 + 主程序无锁定)
+总体: 更新正常 (服务全Auto + 无禁用策略 + 主程序无锁定)
+服务 GoogleUpdaterInternalService156.0.8067.0 = Auto
+服务 GoogleUpdaterService156.0.8067.0 = Auto
+服务 GoogleChromeElevationService = Manual (保持不动)
+任务 (无Google更新类任务)
+注册表 UpdateDefault = (无策略键)
+updater.exe DENY=False | GoogleUpdate.exe DENY=False
+```
+
+## 工作原理
+
+Chrome 156 的更新器是纯服务 + COM 拉起模式，服务停了照样每天 `ForceInstall`。所以三处都得掐：
+
+- **服务**：只禁 2 个 Updater 自动服务。服务发现是双保险，服务名命中模式**且**可执行路径含 `Google`，第三方撞名也误伤不了（反向测试验证过）。`ElevationService` 全程不动。
+- **注册表**：官方 kill-switch，`HKLM\SOFTWARE\Policies\Google\Update` 下 `UpdateDefault=0` 等 4 个 DWORD，COM 拉起也认。
+- **文件锁**：给更新主程序加 DENY（执行+写）。exe 从系统服务的 `BinaryPath` 反推定位，换盘/换路径跟得上；无服务的 legacy 残留保留硬编码兜底。
+
+禁止前先写 `baseline\<时间>-disable\baseline.json`（服务 StartMode、任务状态、注册表值、文件列表），恢复时照读。另有 21 项回归测试（`test-csharp.ps1`）+ 假服务反向测试（`test-fake-service.ps1`）+ 诊断包测试（`test-diag.ps1`）。
+
+## 贡献与开发
+
+欢迎提 Issue 和 PR。开发环境：.NET 8 SDK + Windows 10/11，`dotnet build` 即编。改完跑一遍 `test-csharp.ps1`（要管理员）再提交。
+
+## 支持
+
+我养了两只猫，汤圆和饺子。如果你觉得 ChromeUpdateToggle 给你的生活带来了快乐，你可以喂它们 [罐头食品 🥩](https://ko-fi.com/gokuscraper)。
+
+## License
+
+见 [LICENSE](LICENSE)（Apache 2.0）。
+
+---
+
+*Keywords: Chrome 禁止更新, 关闭Chrome自动更新, UpdateDefault, GoogleUpdater, 单文件EXE, WinForms, 中英双语, chrome disable updates, chrome update toggle, windows service, baseline restore, bilingual*
