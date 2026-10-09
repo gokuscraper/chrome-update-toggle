@@ -36,7 +36,7 @@ public static class Strings
     public static string BtnOK => T("确定", "OK");
     public static string BtnRefresh => T("刷新状态", "Refresh");
     public static string BtnExport => T("导出诊断", "Export diag");
-    public static string Author => T("作者：开源探长彪哥", "Author: 开源探长彪哥");
+    public static string Author => T("作者：开源探长彪哥", "Author: gokuscraper");
     public static string LangZh => "中文";
     public static string LangEn => "English";
     public static string StartedSection(string title) => T($"===== {title} 开始 =====", $"===== {title} started =====");
