@@ -3,6 +3,7 @@ bin/
 obj/
 # runtime data (machine-specific baselines & logs)
 baseline/
+logs/
 lang.txt
 test-*-result.log
 test-fake-service.log
@@ -11,6 +12,10 @@ restore-check.log
 task-check.log
 status-check.log
 last-error.log
+# one-off local helpers (kept on disk, not versioned)
+task-check.ps1
+task-check.log
+status-check.log
 # user-specific
 *.user
 .vs/
