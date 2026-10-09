@@ -3,6 +3,7 @@ bin/
 obj/
 # runtime data (machine-specific baselines & logs)
 baseline/
+lang.txt
 test-*-result.log
 test-fake-service.log
 bat-debug.log

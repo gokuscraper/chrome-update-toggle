@@ -2,45 +2,54 @@ namespace ChromeUpdateToggle;
 
 public partial class MainForm : Form
 {
+    private GroupBox grp = null!;
     private RadioButton rbDisable = null!;
     private RadioButton rbEnable = null!;
+    private ComboBox cmbLang = null!;
+    private Label lblAuthor = null!;
     private Button btnOK = null!;
     private Button btnRefresh = null!;
     private Button btnExport = null!;
     private Label lblStatus = null!;
     private TextBox txtState = null!;
     private TextBox txtLog = null!;
+    private bool _loadingLang;
 
     public MainForm()
     {
         InitializeComponent();
+        ApplyLanguage();
         RefreshState();
     }
 
     private void InitializeComponent()
     {
-        Text = $"Chrome 自动更新开关 v{Logger.Version}";
         Size = new Size(640, 560);
         StartPosition = FormStartPosition.CenterScreen;
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
 
-        var grp = new GroupBox { Text = "请选择操作", Location = new Point(12, 8), Size = new Size(594, 60) };
-        rbDisable = new RadioButton { Text = "禁止更新", Location = new Point(20, 24), Size = new Size(120, 24), Checked = true };
-        rbEnable = new RadioButton { Text = "恢复更新", Location = new Point(160, 24), Size = new Size(120, 24) };
-        var lblAuthor = new Label
+        grp = new GroupBox { Location = new Point(12, 8), Size = new Size(594, 60) };
+        rbDisable = new RadioButton { Location = new Point(20, 24), Size = new Size(130, 24), Checked = true };
+        rbEnable = new RadioButton { Location = new Point(155, 24), Size = new Size(130, 24) };
+        cmbLang = new ComboBox
         {
-            Text = "作者：开源探长彪哥",
+            Location = new Point(290, 24), Size = new Size(110, 24),
+            DropDownStyle = ComboBoxStyle.DropDownList,
+        };
+        cmbLang.Items.AddRange(new object[] { Strings.LangZh, Strings.LangEn });
+        lblAuthor = new Label
+        {
             Location = new Point(414, 24),
             Size = new Size(170, 24),
             TextAlign = ContentAlignment.MiddleRight,
             ForeColor = Color.Gray,
         };
-        grp.Controls.AddRange(new Control[] { rbDisable, rbEnable, lblAuthor });
+        grp.Controls.AddRange(new Control[] { rbDisable, rbEnable, cmbLang, lblAuthor });
 
-        btnOK = new Button { Text = "确定", Location = new Point(12, 76), Size = new Size(140, 36) };
-        btnRefresh = new Button { Text = "刷新状态", Location = new Point(160, 76), Size = new Size(140, 36) };
-        btnExport = new Button { Text = "导出诊断", Location = new Point(486, 76), Size = new Size(120, 36) };
+        btnOK = new Button { Location = new Point(12, 76), Size = new Size(140, 36) };
+        btnRefresh = new Button { Location = new Point(160, 76), Size = new Size(140, 36) };
+        btnExport = new Button { Location = new Point(486, 76), Size = new Size(120, 36) };
         lblStatus = new Label
         {
             Location = new Point(320, 76), Size = new Size(158, 36),
@@ -63,8 +72,30 @@ public partial class MainForm : Form
         btnOK.Click += async (_, _) => await RunSelectedAsync();
         btnRefresh.Click += (_, _) => RefreshState();
         btnExport.Click += async (_, _) => await ExportAsync();
+        cmbLang.SelectedIndexChanged += (_, _) =>
+        {
+            if (_loadingLang) return;
+            Strings.SetLang(cmbLang.SelectedIndex == 1 ? "en" : "zh");
+            ApplyLanguage();
+            RefreshState();
+        };
 
         Controls.AddRange(new Control[] { grp, btnOK, btnRefresh, btnExport, lblStatus, txtState, txtLog });
+    }
+
+    private void ApplyLanguage()
+    {
+        _loadingLang = true;
+        Text = Strings.AppTitle;
+        grp.Text = Strings.GroupOp;
+        rbDisable.Text = Strings.OpDisable;
+        rbEnable.Text = Strings.OpEnable;
+        cmbLang.SelectedIndex = Strings.Current == "en" ? 1 : 0;
+        lblAuthor.Text = Strings.Author;
+        btnOK.Text = Strings.BtnOK;
+        btnRefresh.Text = Strings.BtnRefresh;
+        btnExport.Text = Strings.BtnExport;
+        _loadingLang = false;
     }
 
     private void RefreshState()
@@ -73,35 +104,31 @@ public partial class MainForm : Form
         {
             var (status, detail) = UpdateManager.GetUpdateStatus();
             lblStatus.Text = status;
-            lblStatus.ForeColor = status switch
-            {
-                "已禁止更新" => Color.Red,
-                "更新正常" => Color.Green,
-                _ => Color.Orange,
-            };
-            string head = UpdateManager.IsAdministrator() ? "[管理员] " : "[非管理员, 只能查看] ";
-            txtState.Text = head + $"当前: {status} ({detail})\r\n" + UpdateManager.DescribeState();
+            lblStatus.ForeColor = status == Strings.StDisabled ? Color.Red
+                : status == Strings.StNormal ? Color.Green : Color.Orange;
+            string head = UpdateManager.IsAdministrator() ? Strings.HeadAdmin : Strings.HeadNonAdmin;
+            txtState.Text = head + Strings.StateNow(status, detail) + "\r\n" + UpdateManager.DescribeState();
         }
         catch (Exception ex)
         {
-            lblStatus.Text = "未知";
+            lblStatus.Text = "?";
             lblStatus.ForeColor = Color.Gray;
-            txtState.Text = "读取状态失败: " + ex.Message;
+            txtState.Text = Strings.StateReadFail + ex.Message;
         }
     }
 
     private async Task RunSelectedAsync()
     {
-        string title = rbDisable.Checked ? "禁止更新" : "恢复更新";
+        string title = rbDisable.Checked ? Strings.OpDisable : Strings.OpEnable;
         string arg = rbDisable.Checked ? "--disable" : "--enable";
         SetBusy(false);
         try
         {
             if (!UpdateManager.IsAdministrator())
-                Log("当前非管理员, 弹 UAC 提权执行 (点\"是\"即可)...");
-            Log($"===== {title} 开始 =====");
+                Log(Strings.NeedAdminUI);
+            Log(Strings.StartedSection(title));
             int rc = await Task.Run(() => Program.RunElevated(arg, Log));
-            Log(rc == 0 ? $"===== {title} 成功 =====" : $"===== {title} 失败/取消 (exit={rc}) =====");
+            Log(rc == 0 ? Strings.DoneOk(title) : Strings.DoneFail(title, rc));
         }
         catch (Exception ex)
         {
@@ -113,15 +140,16 @@ public partial class MainForm : Form
 
     private void SetBusy(bool enabled)
     {
-        rbDisable.Enabled = rbEnable.Enabled = btnOK.Enabled = btnRefresh.Enabled = btnExport.Enabled = enabled;
+        rbDisable.Enabled = rbEnable.Enabled = cmbLang.Enabled
+            = btnOK.Enabled = btnRefresh.Enabled = btnExport.Enabled = enabled;
     }
 
     private async Task ExportAsync()
     {
         using var dlg = new SaveFileDialog
         {
-            Filter = "ZIP 压缩包|*.zip",
-            FileName = $"ChromeUpdateToggle-诊断-{DateTime.Now:yyyyMMdd-HHmmss}.zip",
+            Filter = Strings.ZipFilter,
+            FileName = Strings.DiagDefaultName,
             InitialDirectory = Environment.GetFolderPath(Environment.SpecialFolder.Desktop),
         };
         if (dlg.ShowDialog(this) != DialogResult.OK) return;

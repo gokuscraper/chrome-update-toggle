@@ -15,6 +15,13 @@ static class Program
             return RunAction(l => UpdateManager.Enable(l), args);
         if (args.Any(a => a is "--reset" or "3"))
             return RunAction(l => UpdateManager.ResetToDefaults(l), args);
+        if (args.Any(a => a is "--lang"))
+        {
+            string v = args.SkipWhile(a => a != "--lang").Skip(1).FirstOrDefault() ?? "zh";
+            Strings.SetLang(v.StartsWith("en", StringComparison.OrdinalIgnoreCase) ? "en" : "zh");
+            Console.WriteLine("lang=" + Strings.Current);
+            return 0;
+        }
         if (args.Any(a => a is "--export-diagnostics"))
         {
             // 导出诊断包(只读为主, 不提权)
@@ -23,7 +30,7 @@ static class Program
                 string zip = args.SkipWhile(a => a != "--export-diagnostics").Skip(1)
                     .FirstOrDefault()
                     ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Desktop),
-                        $"ChromeUpdateToggle-诊断-{DateTime.Now:yyyyMMdd-HHmmss}.zip");
+                        Strings.DiagDefaultName);
                 Logger.ExportDiagnostics(zip, Logger.Tee(Console.WriteLine));
                 return 0;
             }
@@ -76,7 +83,7 @@ static class Program
 
         if (Environment.GetEnvironmentVariable(ElevatedFlag) == "1")
         {
-            Console.Error.WriteLine("[ERROR] 需要管理员身份运行(提权被拒绝)。");
+            Console.Error.WriteLine(Strings.ErrDenied);
             return 1;
         }
 
@@ -96,7 +103,7 @@ static class Program
         }
         catch (System.ComponentModel.Win32Exception ex) when (ex.NativeErrorCode == 1223)
         {
-            Console.Error.WriteLine("[ERROR] 已取消提权。");
+            Console.Error.WriteLine(Strings.ErrCancelled);
             return 1;
         }
     }

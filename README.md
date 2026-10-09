@@ -21,11 +21,12 @@ Chrome 156 的更新器已转纯服务 + COM 拉起模式，光禁服务拦不�
 双击即弹 UAC（manifest `requireAdministrator`，免右键）。界面：单选「禁止更新/恢复更新」+「确定」，右上角大字显示当前状态（**已禁止更新**红 / **更新正常**绿 / **状态不一致**橙）+ 明细 + 日志。
 
 ```text
-ChromeUpdateToggle.exe            # 打开界面
+ChromeUpdateToggle.exe            # 打开界面（默认中文，界面下拉可切 English，即时生效并记住）
 ChromeUpdateToggle.exe --disable  # 禁止更新（需管理员，exit 0 成功）
 ChromeUpdateToggle.exe --enable   # 按最新基线恢复
 ChromeUpdateToggle.exe --reset    # 回出厂默认（服务Auto/任务启用/删策略键/解锁）
 ChromeUpdateToggle.exe --status   # 只读查状态
+ChromeUpdateToggle.exe --lang en|zh  # 切换语言（命令行/UI 共用 exe 旁 lang.txt）
 ChromeUpdateToggle.exe --export-diagnostics [zip路径]  # 导出诊断包（默认放桌面）
 ```
 

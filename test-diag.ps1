@@ -33,11 +33,33 @@ if (Test-Path -LiteralPath $zip) {
   $vr = [System.IO.Compression.ZipFile]::OpenRead($zip).GetEntry('版本.txt')
   $vrR = New-Object IO.StreamReader($vr.Open())
   $vtxt = $vrR.ReadToEnd(); $vrR.Close()
-  Ok '版本.txt有版本号' ($vtxt -match 'v1\.1\.0') ($vtxt.Split("`n")[0])
+  Ok '版本.txt有版本号' ($vtxt -match 'v\d+\.\d+\.\d+') ($vtxt.Split("`n")[0])
   Remove-Item -LiteralPath $zip -Force
 }
 $logDir = Join-Path (Split-Path -Parent $exe) 'logs'
 $today = Join-Path $logDir ((Get-Date).ToString('yyyy-MM-dd') + '.log')
 Ok '常驻日志已落盘' (Test-Path -LiteralPath $today) $today
+
+W '--- i18n EN ---'
+$pl = Start-Process -FilePath $exe -ArgumentList '--lang', 'en' -Wait -PassThru -WindowStyle Hidden
+Ok 'lang en退出码=0' ($pl.ExitCode -eq 0) "exit=$($pl.ExitCode)"
+$langFile = Join-Path (Split-Path -Parent $exe) 'lang.txt'
+Ok 'lang.txt=en' ((Get-Content -LiteralPath $langFile -Raw).Trim() -eq 'en') (Get-Content -LiteralPath $langFile -Raw).Trim()
+$zip2 = Join-Path $env:TEMP 'CUT-diag-test-en.zip'
+if (Test-Path -LiteralPath $zip2) { Remove-Item -LiteralPath $zip2 -Force }
+$pe = Start-Process -FilePath $exe -ArgumentList '--export-diagnostics', $zip2 -Wait -PassThru -WindowStyle Hidden
+Ok 'EN export退出码=0' ($pe.ExitCode -eq 0) "exit=$($pe.ExitCode)"
+Add-Type -AssemblyName System.IO.Compression.FileSystem
+$en2 = [System.IO.Compression.ZipFile]::OpenRead($zip2).Entries.FullName
+W ("EN包内: " + ($en2 -join ' | '))
+Ok 'EN含status.txt' ($en2 -contains 'status.txt') '有'
+Ok 'EN含version.txt' ($en2 -contains 'version.txt') '有'
+$se = [System.IO.Compression.ZipFile]::OpenRead($zip2).GetEntry('status.txt')
+$sr2 = New-Object IO.StreamReader($se.Open())
+$etxt = $sr2.ReadToEnd(); $sr2.Close()
+Ok 'EN状态行是英文' ($etxt -match 'Updates NORMAL|Updates DISABLED|INCONSISTENT') ($etxt.Split("`n")[0])
+Remove-Item -LiteralPath $zip2 -Force
+$pb = Start-Process -FilePath $exe -ArgumentList '--lang', 'zh' -Wait -PassThru -WindowStyle Hidden
+Ok '切回中文' (((Get-Content -LiteralPath $langFile -Raw).Trim() -eq 'zh') -and ($pb.ExitCode -eq 0)) "lang=$((Get-Content -LiteralPath $langFile -Raw).Trim())"
 W "================ 共 PASS=$pass FAIL=$fail ================"
 if ($fail -eq 0) { W 'DONE PASS' } else { W 'DONE FAIL' }

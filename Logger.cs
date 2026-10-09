@@ -7,7 +7,7 @@ namespace ChromeUpdateToggle;
 /// <summary>常驻文件日志 + 版本信息 + 诊断包导出。</summary>
 public static class Logger
 {
-    public const string Version = "1.1.0";
+    public const string Version = "1.2.0";
 
     private static readonly object Gate = new();
     private static string LogDir => Path.Combine(AppContext.BaseDirectory, "logs");
@@ -47,9 +47,9 @@ public static class Logger
                 @"C:\Program Files\Google\Chrome\Application\chrome.exe").FileVersion ?? "?";
         }
         catch { chromeVer = "?"; }
-        return $"程序版本: v{Version}\r\n打包时间: {buildTime}\r\n" +
-               $"系统: {Environment.OSVersion}\r\nChrome: {chromeVer}\r\n" +
-               $"运行时: {Environment.Version}\r\n";
+        return $"{Strings.VerApp}v{Version}\r\n{Strings.VerBuild}{buildTime}\r\n" +
+               $"{Strings.VerOS}{Environment.OSVersion}\r\n{Strings.VerChrome}{chromeVer}\r\n" +
+               $"{Strings.VerRt}{Environment.Version}\r\n";
     }
 
     /// <summary>导出诊断包: 状态 + 最新基线 + 近3天日志 + 版本, 打成zip。</summary>
@@ -60,15 +60,18 @@ public static class Logger
         Directory.CreateDirectory(tmp);
 
         var (status, detail) = UpdateManager.GetUpdateStatus();
-        File.WriteAllText(Path.Combine(tmp, "状态.txt"),
-            $"当前: {status} ({detail})\r\n\r\n{UpdateManager.DescribeState()}");
+        bool en = Strings.Current == "en";
+        string stateFile = en ? "status.txt" : "状态.txt";
+        string verFile = en ? "version.txt" : "版本.txt";
+        File.WriteAllText(Path.Combine(tmp, stateFile),
+            $"{Strings.StateNow(status, detail)}\r\n\r\n{UpdateManager.DescribeState()}");
 
         string? newest = UpdateManager.NewestBaselineDir();
         if (newest != null && File.Exists(Path.Combine(newest, "baseline.json")))
             File.Copy(Path.Combine(newest, "baseline.json"),
                 Path.Combine(tmp, "baseline.json"));
         else
-            File.WriteAllText(Path.Combine(tmp, "baseline.json"), "(无基线)");
+            File.WriteAllText(Path.Combine(tmp, "baseline.json"), Strings.NoBaselineFile);
 
         string logDst = Path.Combine(tmp, "logs");
         Directory.CreateDirectory(logDst);
@@ -80,12 +83,12 @@ public static class Logger
                 File.Copy(f, Path.Combine(logDst, Path.GetFileName(f)));
         }
 
-        File.WriteAllText(Path.Combine(tmp, "版本.txt"), BuildInfo());
+        File.WriteAllText(Path.Combine(tmp, verFile), BuildInfo());
 
         if (File.Exists(zipPath)) File.Delete(zipPath);
         ZipFile.CreateFromDirectory(tmp, zipPath);
         Directory.Delete(tmp, true);
-        log($"诊断包已导出: {zipPath}");
+        log(Strings.DiagExported(zipPath));
         return zipPath;
     }
 }

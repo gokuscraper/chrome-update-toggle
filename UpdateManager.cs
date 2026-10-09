@@ -8,7 +8,7 @@ using Microsoft.Win32;
 
 namespace ChromeUpdateToggle;
 
-/// <summary>基线快照: 禁止更新前记录机器原始状态, 恢复时照此还原。</summary>
+/// <summary>Baseline snapshot: records machine state before disabling, restores from it.</summary>
 public sealed class Baseline
 {
     public string Timestamp { get; set; } = "";
@@ -53,7 +53,7 @@ public static class UpdateManager
     public static string BaseDir => AppContext.BaseDirectory;
     public static string BaselineRoot => Path.Combine(BaseDir, "baseline");
 
-    // ---------- 查询 ----------
+    // ---------- queries ----------
 
     public static bool IsAdministrator()
     {
@@ -62,8 +62,8 @@ public static class UpdateManager
     }
 
     /// <summary>
-    /// 本机实际存在的 Google 更新服务(只含 Updater 系, Elevation excluded)。
-    /// 双保险: 服务名命中模式 且 可执行路径含 Google, 缺一不要, 防第三方撞名误伤。
+    /// Updater services on this machine (Updater family only, Elevation excluded).
+    /// Double gate: name matches pattern AND binary path contains Google.
     /// </summary>
     public static List<string> FindUpdaterServices()
     {
@@ -97,7 +97,7 @@ public static class UpdateManager
         catch { return "?"; }
     }
 
-    /// <summary>本机实际存在的 Google 更新类计划任务(只含 TaskName 含 Google+Update 的)。</summary>
+    /// <summary>Updater scheduled tasks on this machine (TaskName contains Google+Update).</summary>
     public static List<TaskEntry> FindUpdaterTasks()
     {
         var result = new List<TaskEntry>();
@@ -127,15 +127,15 @@ public static class UpdateManager
     }
 
     /// <summary>
-    /// 本机实际存在的更新主程序。
-    /// 主路: 从 Updater 系统服务的 BinaryPath 反推所在目录再枚举(换盘/换路径/ARM都跟得上);
-    /// 兜底: legacy 的 GoogleUpdate.exe 没有对应服务, 保留两处硬编码。
+    /// Updater executables on this machine.
+    /// Primary: derive directories from Updater services' BinaryPath;
+    /// fallback: hardcoded paths (legacy GoogleUpdate.exe has no service).
     /// </summary>
     public static List<string> FindUpdaterExes()
     {
         var found = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-        // 主路: 服务 BinaryPath 反推
+        // Primary: derive from service BinaryPath
         using (var searcher = new ManagementObjectSearcher(
             "SELECT PathName FROM Win32_Service"))
         {
@@ -147,7 +147,7 @@ public static class UpdateManager
                 string exe = ParseExeFromServicePath(raw);
                 if (exe == "" || !File.Exists(exe)) continue;
                 found.Add(exe);
-                // exe 一般在 <root>\<ver>\updater.exe, 往上两层当 root 枚举同族
+                // exe usually at <root>\<ver>\updater.exe, enumerate siblings under root
                 string? root = Directory.GetParent(Path.GetDirectoryName(exe)!)?.FullName;
                 if (root != null && Directory.Exists(root))
                 {
@@ -158,7 +158,7 @@ public static class UpdateManager
             }
         }
 
-        // 兜底: 硬编码(legacy 无服务可反推)
+        // Fallback: hardcoded (legacy has no service to derive from)
         if (File.Exists(LegacyExe)) found.Add(LegacyExe);
         if (Directory.Exists(GoogleUpdaterDir))
         {
@@ -171,8 +171,8 @@ public static class UpdateManager
     }
 
     /// <summary>
-    /// 纯函数: 从服务 PathName 剥出 exe 路径。
-    /// 带引号取引号内(路径含空格/括号), 不带引号取首段。
+    /// Pure function: strip exe path from a service PathName.
+    /// Quoted -> inside quotes (paths with spaces/parens), unquoted -> first token.
     /// </summary>
     public static string ParseExeFromServicePath(string raw)
     {
@@ -214,21 +214,21 @@ public static class UpdateManager
     {
         var (status, detail) = GetUpdateStatus();
         var sw = new System.Text.StringBuilder();
-        sw.AppendLine($"总体: {status} ({detail})");
+        sw.AppendLine(Strings.Overall(status, detail));
         foreach (var s in FindUpdaterServices())
-            sw.AppendLine($"服务 {s} = {Safe(() => GetServiceStartMode(s))}");
-        sw.AppendLine($"服务 GoogleChromeElevationService = {GetElevationStartMode()} (保持不动)");
+            sw.AppendLine(Strings.SvcLine(s, Safe(() => GetServiceStartMode(s))));
+        sw.AppendLine(Strings.SvcElev(GetElevationStartMode()));
         var tasks = FindUpdaterTasks();
-        sw.AppendLine(tasks.Count == 0 ? "任务 (无Google更新类任务)" :
+        sw.AppendLine(tasks.Count == 0 ? Strings.NoTasks :
             string.Join(" | ", tasks.Select(t => $"{t.FullName}={t.State}")));
-        sw.AppendLine($"注册表 UpdateDefault = {GetUpdateDefault()?.ToString() ?? "(无策略键)"}");
+        sw.AppendLine(Strings.RegLine(GetUpdateDefault()?.ToString() ?? Strings.RegAbsent));
         var files = FindUpdaterExes();
-        sw.AppendLine(files.Count == 0 ? "文件 (无更新主程序)" :
+        sw.AppendLine(files.Count == 0 ? Strings.NoFiles :
             string.Join(" | ", files.Select(f => $"{Path.GetFileName(f)} DENY={FileHasDeny(f)}")));
         return sw.ToString();
     }
 
-    /// <summary>综合三支柱判定: 已禁止更新 / 更新正常 / 状态不一致。</summary>
+    /// <summary>Three-pillar verdict.</summary>
     public static (string Status, string Detail) GetUpdateStatus()
     {
         var svcs = FindUpdaterServices();
@@ -243,51 +243,51 @@ public static class UpdateManager
         bool lockNone = files.All(f => !FileHasDeny(f));
 
         if (svcDis && regDis && lockAll)
-            return ("已禁止更新", "服务全Disabled + 策略UpdateDefault=0 + 主程序全锁定");
+            return (Strings.StDisabled, Strings.StDisabledDetail);
         if (svcAuto && regOk && lockNone)
-            return ("更新正常", "服务全Auto + 无禁用策略 + 主程序无锁定");
+            return (Strings.StNormal, Strings.StNormalDetail);
         var parts = new List<string>
         {
-            "服务:" + (svcDis ? "已禁" : svcAuto ? "自动" : "混合"),
-            "策略:" + (regDis ? "已禁" : regOk ? "正常" : $"UpdateDefault={ud}"),
-            "锁定:" + (lockAll ? "全锁" : lockNone ? "无锁" : "部分锁"),
+            Strings.PillarSvc + (svcDis ? Strings.PillarSvcDis : svcAuto ? Strings.PillarSvcAuto : Strings.PillarSvcMixed),
+            Strings.PillarReg + (regDis ? Strings.PillarSvcDis : regOk ? Strings.PillarRegOk : $"UpdateDefault={ud}"),
+            Strings.PillarLock + (lockAll ? Strings.PillarLockAll : lockNone ? Strings.PillarLockNone : Strings.PillarLockPart),
         };
-        return ("状态不一致", string.Join(" ", parts));
+        return (Strings.StMixed, string.Join(" ", parts));
     }
 
-    // ---------- 禁止 ----------
+    // ---------- disable ----------
 
     public static Baseline Disable(Action<string> log)
     {
         var base_ = CaptureBaseline(log);
         string dir = SaveBaseline(base_, "disable");
-        log($"基线已存: {dir}");
+        log(Strings.BaseSaved(dir));
 
-        log("[1/5] 结束 Chrome/更新进程");
+        log(Strings.StepKill);
         KillProcess("chrome");
         KillProcess("GoogleUpdate");
         KillProcess("updater");
 
-        log("[2/5] 禁用更新服务 (Elevation 不动)");
+        log(Strings.StepSvc);
         foreach (var s in FindUpdaterServices())
         {
             TryStopService(s);
             SetStartMode(s, "Disabled");
-            log($"  {s} -> Disabled");
+            log(Strings.ToDisabled(s));
         }
 
-        log("[3/5] 禁用计划任务 (无则跳过)");
+        log(Strings.StepTask);
         TryRun("schtasks", "/Change /TN \"GoogleUpdateTaskMachineCore\" /Disable");
         TryRun("schtasks", "/Change /TN \"GoogleUpdateTaskMachineUA\" /Disable");
         var tasks = FindUpdaterTasks();
-        if (tasks.Count == 0) log("  (本机无 Google 更新类任务, SKIP)");
+        if (tasks.Count == 0) log(Strings.NoTaskSkip);
         foreach (var t in tasks)
         {
             Run("schtasks", $"/Change /TN \"{t.FullName}\" /Disable");
-            log($"  {t.FullName} -> Disabled");
+            log(Strings.ToDisabled(t.FullName));
         }
 
-        log("[4/5] 写注册表策略 (官方 kill-switch)");
+        log(Strings.StepReg);
         using (var key = Registry.LocalMachine.CreateSubKey(RegPath))
         {
             key!.SetValue("UpdateDefault", 0, RegistryValueKind.DWord);
@@ -297,36 +297,36 @@ public static class UpdateManager
         }
         log("  UpdateDefault=0");
 
-        log("[5/5] 锁定更新主程序 (Deny 执行+写)");
+        log(Strings.StepLock);
         var files = FindUpdaterExes();
-        if (files.Count == 0) log("  (无更新主程序, SKIP)");
+        if (files.Count == 0) log(Strings.NoFileSkip);
         foreach (var f in files)
         {
             AddDeny(f);
-            log($"  LOCKED: {f}");
+            log(Strings.Locked(f));
         }
 
-        log("[OK] 已禁止更新。chrome://settings/help 应显示由组织管理/无法更新。");
+        log(Strings.DisableOk);
         return base_;
     }
 
-    // ---------- 恢复(按最新基线) ----------
+    // ---------- enable (from newest baseline) ----------
 
     public static void Enable(Action<string> log)
     {
         var dir = NewestBaselineDir();
         Baseline? base_ = dir != null ? LoadBaseline(dir) : null;
-        if (base_ != null) log($"使用基线: {dir}");
-        else log("(无基线, 用默认策略恢复)");
+        if (base_ != null) log(Strings.UseBase(dir!));
+        else log(Strings.NoBase);
 
-        log("[1/4] 解锁更新主程序");
+        log(Strings.StepUnlock);
         foreach (var f in FindUpdaterExes())
         {
             RemoveDeny(f);
-            log($"  UNLOCKED: {f}");
+            log(Strings.Unlocked(f));
         }
 
-        log("[2/4] 还原服务 (Elevation 从未动过)");
+        log(Strings.StepSvcRestore);
         if (base_ != null)
         {
             foreach (var s in base_.Services)
@@ -334,25 +334,25 @@ public static class UpdateManager
                 try
                 {
                     SetStartMode(s.Name, s.StartMode);
-                    log($"  {s.Name} -> {s.StartMode} (基线)");
+                    log(Strings.SvcRestored(s.Name, s.StartMode));
                 }
                 catch (Exception ex)
                 {
-                    log($"  [SKIP] {s.Name} 不存在或改不动: {ex.Message}");
+                    log(Strings.SkipMissing(s.Name, ex.Message));
                 }
             }
         }
         else
         {
-            // 无基线=干净机器, 出厂默认就是 Auto, 回 Auto 才能落到"更新正常"
+            // No baseline = clean machine, factory default is Auto
             foreach (var s in FindUpdaterServices())
             {
                 SetStartMode(s, "Auto");
-                log($"  {s} -> Auto (默认)");
+                log(Strings.ToAuto(s));
             }
         }
 
-        log("[3/4] 还原计划任务");
+        log(Strings.StepTaskRestore);
         if (base_ != null && base_.Tasks.Count > 0)
         {
             foreach (var t in base_.Tasks)
@@ -361,7 +361,7 @@ public static class UpdateManager
                     Run("schtasks", $"/Change /TN \"{t.FullName}\" /Disable");
                 else
                     Run("schtasks", $"/Change /TN \"{t.FullName}\" /Enable");
-                log($"  {t.FullName} -> {t.State} (基线)");
+                log($"  {t.FullName} -> {t.State} (baseline)");
             }
         }
         else
@@ -371,11 +371,11 @@ public static class UpdateManager
             foreach (var t in FindUpdaterTasks())
             {
                 Run("schtasks", $"/Change /TN \"{t.FullName}\" /Enable");
-                log($"  {t.FullName} -> Enabled");
+                log(Strings.ToEnabled(t.FullName));
             }
         }
 
-        log("[4/4] 还原注册表");
+        log(Strings.StepRegRestore);
         if (base_ != null)
         {
             if (base_.RegExisted)
@@ -384,12 +384,12 @@ public static class UpdateManager
                 using var key = Registry.LocalMachine.CreateSubKey(RegPath);
                 foreach (var kv in base_.RegValues)
                     key!.SetValue(kv.Key, kv.Value, RegistryValueKind.DWord);
-                log("  已按基线恢复策略值");
+                log(Strings.RegImported);
             }
             else
             {
                 Registry.LocalMachine.DeleteSubKeyTree(RegPath, false);
-                log("  已删除测试创建的策略键 (基线本无)");
+                log(Strings.RegDeleted);
             }
         }
         else
@@ -401,41 +401,41 @@ public static class UpdateManager
                 key.DeleteValue("AutoUpdateCheckPeriodMinutes", false);
                 key.DeleteValue("DisableAutoUpdateChecksCheckboxValue", false);
             }
-            log("  UpdateDefault=1 (默认), 残留已清");
+            log(Strings.RegDefault);
         }
 
-        log("[OK] 已恢复更新。去 chrome://settings/help 点检查更新验证。");
+        log(Strings.EnableOk);
     }
 
-    /// <summary>恢复出厂默认: 服务 Auto / 任务启用 / 策略键删除 / 文件解锁。</summary>
+    /// <summary>Factory defaults: services Auto / tasks enabled / policy key deleted / exes unlocked.</summary>
     public static void ResetToDefaults(Action<string> log)
     {
-        log("[1/4] 解锁更新主程序");
+        log(Strings.StepUnlock);
         foreach (var f in FindUpdaterExes())
         {
             RemoveDeny(f);
-            log($"  UNLOCKED: {f}");
+            log(Strings.Unlocked(f));
         }
-        log("[2/4] 服务回 Auto");
+        log(Strings.StepSvcAuto);
         foreach (var s in FindUpdaterServices())
         {
             TryStopService(s);
             SetStartMode(s, "Auto");
-            log($"  {s} -> Auto");
+            log(Strings.ToAuto(s));
         }
-        log("[3/4] 任务回启用");
+        log(Strings.StepTaskOn);
         foreach (var t in FindUpdaterTasks())
         {
             Run("schtasks", $"/Change /TN \"{t.FullName}\" /Enable");
-            log($"  {t.FullName} -> Enabled");
+            log(Strings.ToEnabled(t.FullName));
         }
-        log("[4/4] 删除策略键");
+        log(Strings.StepRegDel);
         Registry.LocalMachine.DeleteSubKeyTree(RegPath, false);
-        log("  已删除 HKLM\\" + RegPath);
-        log("[OK] 已回到出厂默认 (Auto/Ready/无策略)。");
+        log(Strings.RegKeyDeleted(@"HKLM\" + RegPath));
+        log(Strings.ResetOk);
     }
 
-    // ---------- 基线 ----------
+    // ---------- baseline ----------
 
     public static Baseline CaptureBaseline(Action<string> log)
     {
@@ -452,7 +452,7 @@ public static class UpdateManager
         }
         base_.Files.AddRange(FindUpdaterExes());
         base_.ElevationStartMode = GetElevationStartMode();
-        log($"基线: 服务{base_.Services.Count} 任务{base_.Tasks.Count} 注册表存在={base_.RegExisted} 文件{base_.Files.Count} Elevation={base_.ElevationStartMode}");
+        log(Strings.BaseSummary(base_.Services.Count, base_.Tasks.Count, base_.RegExisted, base_.Files.Count, base_.ElevationStartMode));
         return base_;
     }
 
@@ -478,18 +478,18 @@ public static class UpdateManager
     {
         var json = File.ReadAllText(Path.Combine(dir, "baseline.json"));
         return JsonSerializer.Deserialize<Baseline>(json)
-            ?? throw new InvalidOperationException("基线文件损坏: " + dir);
+            ?? throw new InvalidOperationException(Strings.ErrBaseBroken(dir));
     }
 
-    // ---------- 底层 ----------
+    // ---------- internals ----------
 
     private static void SetStartMode(string service, string mode)
     {
-        // WMI ChangeStartMode 只认 Automatic/Manual/Disabled, 基线里存的是 Auto
+        // WMI ChangeStartMode only accepts Automatic/Manual/Disabled, baseline stores Auto
         string wmiMode = mode.Equals("Auto", StringComparison.OrdinalIgnoreCase) ? "Automatic" : mode;
         using var mo = new ManagementObject($"Win32_Service.Name='{service}'");
         var rc = Convert.ToUInt32(mo.InvokeMethod("ChangeStartMode", new object[] { wmiMode }));
-        if (rc != 0) throw new InvalidOperationException($"服务 {service} 改为 {mode} 失败 (rc={rc})");
+        if (rc != 0) throw new InvalidOperationException(Strings.ErrSvcMode(service, mode, rc));
     }
 
     private static void TryStopService(string service)
@@ -503,7 +503,7 @@ public static class UpdateManager
                 sc.WaitForStatus(ServiceControllerStatus.Stopped, TimeSpan.FromSeconds(15));
             }
         }
-        catch { /* 已停或无权限则忽略, 外层会抛错 */ }
+        catch { /* already stopped or no rights, outer layer throws */ }
     }
 
     private static void KillProcess(string name)
@@ -550,7 +550,7 @@ public static class UpdateManager
         string out_ = p.StandardOutput.ReadToEnd();
         p.WaitForExit(60000);
         if (p.ExitCode != 0)
-            throw new InvalidOperationException($"{exe} {args} 失败 exit={p.ExitCode}: {p.StandardError.ReadToEnd().Trim()}");
+            throw new InvalidOperationException(Strings.ErrProc(exe, args, p.ExitCode, p.StandardError.ReadToEnd().Trim()));
         return out_;
     }
 
