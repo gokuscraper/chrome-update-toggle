@@ -126,17 +126,65 @@ public static class UpdateManager
         return result;
     }
 
-    /// <summary>本机实际存在的更新主程序: legacy + 各版本 updater.exe。</summary>
+    /// <summary>
+    /// 本机实际存在的更新主程序。
+    /// 主路: 从 Updater 系统服务的 BinaryPath 反推所在目录再枚举(换盘/换路径/ARM都跟得上);
+    /// 兜底: legacy 的 GoogleUpdate.exe 没有对应服务, 保留两处硬编码。
+    /// </summary>
     public static List<string> FindUpdaterExes()
     {
-        var list = new List<string>();
-        if (File.Exists(LegacyExe)) list.Add(LegacyExe);
+        var found = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        // 主路: 服务 BinaryPath 反推
+        using (var searcher = new ManagementObjectSearcher(
+            "SELECT PathName FROM Win32_Service"))
+        {
+            foreach (ManagementObject mo in searcher.Get())
+            {
+                string raw = mo["PathName"]?.ToString() ?? "";
+                if (!raw.Contains("Google", StringComparison.OrdinalIgnoreCase)) continue;
+                if (!raw.Contains("pdat", StringComparison.OrdinalIgnoreCase)) continue;
+                string exe = ParseExeFromServicePath(raw);
+                if (exe == "" || !File.Exists(exe)) continue;
+                found.Add(exe);
+                // exe 一般在 <root>\<ver>\updater.exe, 往上两层当 root 枚举同族
+                string? root = Directory.GetParent(Path.GetDirectoryName(exe)!)?.FullName;
+                if (root != null && Directory.Exists(root))
+                {
+                    foreach (var f in Directory.GetFiles(root, "updater.exe",
+                        SearchOption.AllDirectories))
+                        found.Add(f);
+                }
+            }
+        }
+
+        // 兜底: 硬编码(legacy 无服务可反推)
+        if (File.Exists(LegacyExe)) found.Add(LegacyExe);
         if (Directory.Exists(GoogleUpdaterDir))
         {
-            list.AddRange(Directory.GetFiles(GoogleUpdaterDir, "updater.exe",
-                SearchOption.AllDirectories));
+            foreach (var f in Directory.GetFiles(GoogleUpdaterDir, "updater.exe",
+                SearchOption.AllDirectories))
+                found.Add(f);
         }
-        return list.Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(p => p).ToList();
+
+        return found.OrderBy(p => p, StringComparer.OrdinalIgnoreCase).ToList();
+    }
+
+    /// <summary>
+    /// 纯函数: 从服务 PathName 剥出 exe 路径。
+    /// 带引号取引号内(路径含空格/括号), 不带引号取首段。
+    /// </summary>
+    public static string ParseExeFromServicePath(string raw)
+    {
+        raw = (raw ?? "").Trim();
+        if (raw.StartsWith("\""))
+        {
+            int end = raw.IndexOf('"', 1);
+            if (end > 1) return raw.Substring(1, end - 1);
+            return "";
+        }
+        int sp = raw.IndexOf(' ');
+        return sp < 0 ? raw : raw.Substring(0, sp);
     }
 
     public static int? GetUpdateDefault()
