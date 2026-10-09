@@ -16,6 +16,7 @@ last-error.log
 task-check.ps1
 task-check.log
 status-check.log
+改进计划.md
 # user-specific
 *.user
 .vs/
