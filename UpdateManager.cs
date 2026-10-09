@@ -62,26 +62,46 @@ public static class UpdateManager
     }
 
     /// <summary>
-    /// Updater services on this machine (Updater family only, Elevation excluded).
-    /// Double gate: name matches pattern AND binary path contains Google.
+    /// 单次 WMI 全表快照: 服务名 -> (启动模式, 可执行路径)。
+    /// 服务发现、exe 反推、状态判定共用, 避免一次检测扫三遍 WMI。
     /// </summary>
-    public static List<string> FindUpdaterServices()
+    public static Dictionary<string, (string StartMode, string Path)> GetServiceMap()
     {
-        var result = new List<string>();
+        var map = new Dictionary<string, (string, string)>(StringComparer.OrdinalIgnoreCase);
         using var searcher = new ManagementObjectSearcher(
-            "SELECT Name, PathName FROM Win32_Service");
+            "SELECT Name, PathName, StartMode FROM Win32_Service");
         foreach (ManagementObject mo in searcher.Get())
         {
             string name = mo["Name"]?.ToString() ?? "";
-            string path = mo["PathName"]?.ToString() ?? "";
-            bool nameHit = name.Contains("gupdate", StringComparison.OrdinalIgnoreCase)
-                        || name.StartsWith("GoogleUpdater", StringComparison.OrdinalIgnoreCase);
-            if (!nameHit) continue;
-            if (!path.Contains("Google", StringComparison.OrdinalIgnoreCase)) continue;
-            result.Add(name);
+            if (name == "") continue;
+            map[name] = (mo["StartMode"]?.ToString() ?? "?", mo["PathName"]?.ToString() ?? "");
         }
-        result.Sort(StringComparer.OrdinalIgnoreCase);
-        return result;
+        return map;
+    }
+
+    private static bool IsUpdaterServiceName(string name)
+    {
+        return name.Contains("gupdate", StringComparison.OrdinalIgnoreCase)
+            || name.StartsWith("GoogleUpdater", StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// 本机实际存在的 Google 更新服务(只含 Updater 系, Elevation excluded)。
+    /// 双保险: 服务名命中模式 且 可执行路径含 Google, 缺一不要, 防第三方撞名误伤。
+    /// </summary>
+    public static List<string> FindUpdaterServices()
+    {
+        return FindUpdaterServices(GetServiceMap());
+    }
+
+    internal static List<string> FindUpdaterServices(Dictionary<string, (string StartMode, string Path)> map)
+    {
+        return map
+            .Where(kv => IsUpdaterServiceName(kv.Key)
+                      && kv.Value.Path.Contains("Google", StringComparison.OrdinalIgnoreCase))
+            .Select(kv => kv.Key)
+            .OrderBy(n => n, StringComparer.OrdinalIgnoreCase)
+            .ToList();
     }
 
     public static string GetServiceStartMode(string name)
@@ -133,28 +153,29 @@ public static class UpdateManager
     /// </summary>
     public static List<string> FindUpdaterExes()
     {
+        return FindUpdaterExes(GetServiceMap());
+    }
+
+    internal static List<string> FindUpdaterExes(Dictionary<string, (string StartMode, string Path)> map)
+    {
         var found = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         // Primary: derive from service BinaryPath
-        using (var searcher = new ManagementObjectSearcher(
-            "SELECT PathName FROM Win32_Service"))
+        foreach (var kv in map.Values)
         {
-            foreach (ManagementObject mo in searcher.Get())
+            string raw = kv.Path;
+            if (!raw.Contains("Google", StringComparison.OrdinalIgnoreCase)) continue;
+            if (!raw.Contains("pdat", StringComparison.OrdinalIgnoreCase)) continue;
+            string exe = ParseExeFromServicePath(raw);
+            if (exe == "" || !File.Exists(exe)) continue;
+            found.Add(exe);
+            // exe usually at <root>\<ver>\updater.exe, enumerate siblings under root
+            string? root = Directory.GetParent(Path.GetDirectoryName(exe)!)?.FullName;
+            if (root != null && Directory.Exists(root))
             {
-                string raw = mo["PathName"]?.ToString() ?? "";
-                if (!raw.Contains("Google", StringComparison.OrdinalIgnoreCase)) continue;
-                if (!raw.Contains("pdat", StringComparison.OrdinalIgnoreCase)) continue;
-                string exe = ParseExeFromServicePath(raw);
-                if (exe == "" || !File.Exists(exe)) continue;
-                found.Add(exe);
-                // exe usually at <root>\<ver>\updater.exe, enumerate siblings under root
-                string? root = Directory.GetParent(Path.GetDirectoryName(exe)!)?.FullName;
-                if (root != null && Directory.Exists(root))
-                {
-                    foreach (var f in Directory.GetFiles(root, "updater.exe",
-                        SearchOption.AllDirectories))
-                        found.Add(f);
-                }
+                foreach (var f in Directory.GetFiles(root, "updater.exe",
+                    SearchOption.AllDirectories))
+                    found.Add(f);
             }
         }
 
@@ -212,17 +233,17 @@ public static class UpdateManager
 
     public static string DescribeState()
     {
-        var (status, detail) = GetUpdateStatus();
+        var map = GetServiceMap();
+        var (status, detail, files) = EvaluateStatus(map);
         var sw = new System.Text.StringBuilder();
         sw.AppendLine(Strings.Overall(status, detail));
-        foreach (var s in FindUpdaterServices())
-            sw.AppendLine(Strings.SvcLine(s, Safe(() => GetServiceStartMode(s))));
-        sw.AppendLine(Strings.SvcElev(GetElevationStartMode()));
+        foreach (var s in FindUpdaterServices(map))
+            sw.AppendLine(Strings.SvcLine(s, map.TryGetValue(s, out var e) ? e.StartMode : Safe(() => GetServiceStartMode(s))));
+        sw.AppendLine(Strings.SvcElev(map.TryGetValue("GoogleChromeElevationService", out var el) ? el.StartMode : GetElevationStartMode()));
         var tasks = FindUpdaterTasks();
         sw.AppendLine(tasks.Count == 0 ? Strings.NoTasks :
             string.Join(" | ", tasks.Select(t => $"{t.FullName}={t.State}")));
         sw.AppendLine(Strings.RegLine(GetUpdateDefault()?.ToString() ?? Strings.RegAbsent));
-        var files = FindUpdaterExes();
         sw.AppendLine(files.Count == 0 ? Strings.NoFiles :
             string.Join(" | ", files.Select(f => $"{Path.GetFileName(f)} DENY={FileHasDeny(f)}")));
         return sw.ToString();
@@ -231,28 +252,36 @@ public static class UpdateManager
     /// <summary>Three-pillar verdict.</summary>
     public static (string Status, string Detail) GetUpdateStatus()
     {
-        var svcs = FindUpdaterServices();
-        bool svcDis = svcs.Count > 0 && svcs.All(s => Safe(() => GetServiceStartMode(s)) == "Disabled");
-        bool svcAuto = svcs.Count > 0 && svcs.All(s => Safe(() => GetServiceStartMode(s)) == "Auto");
+        var (status, detail, _) = EvaluateStatus(GetServiceMap());
+        return (status, detail);
+    }
+
+    private static (string Status, string Detail, List<string> Files) EvaluateStatus(
+        Dictionary<string, (string StartMode, string Path)> map)
+    {
+        var svcs = FindUpdaterServices(map);
+        string Mode(string s) => map.TryGetValue(s, out var e) ? e.StartMode : Safe(() => GetServiceStartMode(s));
+        bool svcDis = svcs.Count > 0 && svcs.All(s => Mode(s) == "Disabled");
+        bool svcAuto = svcs.Count > 0 && svcs.All(s => Mode(s) == "Auto");
         int? ud = null;
         try { ud = GetUpdateDefault(); } catch { }
         bool regDis = ud == 0;
         bool regOk = ud is null or 1;
-        var files = FindUpdaterExes();
+        var files = FindUpdaterExes(map);
         bool lockAll = files.Count > 0 && files.All(FileHasDeny);
         bool lockNone = files.All(f => !FileHasDeny(f));
 
         if (svcDis && regDis && lockAll)
-            return (Strings.StDisabled, Strings.StDisabledDetail);
+            return (Strings.StDisabled, Strings.StDisabledDetail, files);
         if (svcAuto && regOk && lockNone)
-            return (Strings.StNormal, Strings.StNormalDetail);
+            return (Strings.StNormal, Strings.StNormalDetail, files);
         var parts = new List<string>
         {
             Strings.PillarSvc + (svcDis ? Strings.PillarSvcDis : svcAuto ? Strings.PillarSvcAuto : Strings.PillarSvcMixed),
             Strings.PillarReg + (regDis ? Strings.PillarSvcDis : regOk ? Strings.PillarRegOk : $"UpdateDefault={ud}"),
             Strings.PillarLock + (lockAll ? Strings.PillarLockAll : lockNone ? Strings.PillarLockNone : Strings.PillarLockPart),
         };
-        return (Strings.StMixed, string.Join(" ", parts));
+        return (Strings.StMixed, string.Join(" ", parts), files);
     }
 
     // ---------- disable ----------
@@ -269,7 +298,8 @@ public static class UpdateManager
         KillProcess("updater");
 
         log(Strings.StepSvc);
-        foreach (var s in FindUpdaterServices())
+        var svcMap = GetServiceMap();
+        foreach (var s in FindUpdaterServices(svcMap))
         {
             TryStopService(s);
             SetStartMode(s, "Disabled");
@@ -298,7 +328,7 @@ public static class UpdateManager
         log("  UpdateDefault=0");
 
         log(Strings.StepLock);
-        var files = FindUpdaterExes();
+        var files = FindUpdaterExes(svcMap);
         if (files.Count == 0) log(Strings.NoFileSkip);
         foreach (var f in files)
         {
@@ -320,7 +350,8 @@ public static class UpdateManager
         else log(Strings.NoBase);
 
         log(Strings.StepUnlock);
-        foreach (var f in FindUpdaterExes())
+        var unlockMap = GetServiceMap();
+        foreach (var f in FindUpdaterExes(unlockMap))
         {
             RemoveDeny(f);
             log(Strings.Unlocked(f));
@@ -345,7 +376,7 @@ public static class UpdateManager
         else
         {
             // No baseline = clean machine, factory default is Auto
-            foreach (var s in FindUpdaterServices())
+            foreach (var s in FindUpdaterServices(unlockMap))
             {
                 SetStartMode(s, "Auto");
                 log(Strings.ToAuto(s));
@@ -411,13 +442,14 @@ public static class UpdateManager
     public static void ResetToDefaults(Action<string> log)
     {
         log(Strings.StepUnlock);
-        foreach (var f in FindUpdaterExes())
+        var resetMap = GetServiceMap();
+        foreach (var f in FindUpdaterExes(resetMap))
         {
             RemoveDeny(f);
             log(Strings.Unlocked(f));
         }
         log(Strings.StepSvcAuto);
-        foreach (var s in FindUpdaterServices())
+        foreach (var s in FindUpdaterServices(resetMap))
         {
             TryStopService(s);
             SetStartMode(s, "Auto");
@@ -440,8 +472,13 @@ public static class UpdateManager
     public static Baseline CaptureBaseline(Action<string> log)
     {
         var base_ = new Baseline { Timestamp = DateTime.Now.ToString("yyyyMMdd-HHmmss") };
-        foreach (var s in FindUpdaterServices())
-            base_.Services.Add(new ServiceEntry { Name = s, StartMode = Safe(() => GetServiceStartMode(s), "?") });
+        var map = GetServiceMap();
+        foreach (var s in FindUpdaterServices(map))
+            base_.Services.Add(new ServiceEntry
+            {
+                Name = s,
+                StartMode = map.TryGetValue(s, out var e) ? e.StartMode : Safe(() => GetServiceStartMode(s), "?")
+            });
         base_.Tasks.AddRange(FindUpdaterTasks());
         using (var key = Registry.LocalMachine.OpenSubKey(RegPath))
         {
@@ -450,8 +487,9 @@ public static class UpdateManager
                 foreach (var name in key.GetValueNames())
                     if (key.GetValue(name) is int v) base_.RegValues[name] = v;
         }
-        base_.Files.AddRange(FindUpdaterExes());
-        base_.ElevationStartMode = GetElevationStartMode();
+        base_.Files.AddRange(FindUpdaterExes(map));
+        base_.ElevationStartMode = map.TryGetValue("GoogleChromeElevationService", out var el)
+            ? el.StartMode : GetElevationStartMode();
         log(Strings.BaseSummary(base_.Services.Count, base_.Tasks.Count, base_.RegExisted, base_.Files.Count, base_.ElevationStartMode));
         return base_;
     }

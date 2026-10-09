@@ -47,6 +47,8 @@ public static class Strings
     public static string HeadNonAdmin => T("[非管理员, 只能查看] ", "[Non-admin, view only] ");
     public static string StateNow(string s, string d) => T($"当前: {s} ({d})", $"Current: {s} ({d})");
     public static string StateReadFail => T("读取状态失败: ", "Failed to read state: ");
+    public static string Checking => T("检测中…", "Checking…");
+    public static string CheckingDetail => T("正在检测当前状态，请稍候…", "Detecting current state, please wait…");
     public static string ZipFilter => T("ZIP 压缩包|*.zip", "ZIP Archive|*.zip");
     public static string DiagDefaultName => $"ChromeUpdateToggle-{(Current == "en" ? "diag" : "诊断")}-{DateTime.Now:yyyyMMdd-HHmmss}.zip";
 

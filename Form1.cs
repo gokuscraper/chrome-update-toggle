@@ -11,6 +11,7 @@ public partial class MainForm : Form
     private Button btnRefresh = null!;
     private Button btnExport = null!;
     private Label lblStatus = null!;
+    private ProgressBar barBusy = null!;
     private TextBox txtState = null!;
     private TextBox txtLog = null!;
     private bool _loadingLang;
@@ -19,7 +20,11 @@ public partial class MainForm : Form
     {
         InitializeComponent();
         ApplyLanguage();
-        RefreshState();
+        // 秒开: 先摆占位, 等窗口画完再异步检测
+        lblStatus.Text = Strings.Checking;
+        lblStatus.ForeColor = Color.Gray;
+        txtState.Text = Strings.CheckingDetail;
+        Shown += async (_, _) => await RefreshAsync();
     }
 
     private void InitializeComponent()
@@ -70,15 +75,25 @@ public partial class MainForm : Form
         };
 
         btnOK.Click += async (_, _) => await RunSelectedAsync();
-        btnRefresh.Click += (_, _) => RefreshState();
+        btnRefresh.Click += async (_, _) => await RefreshAsync();
         btnExport.Click += async (_, _) => await ExportAsync();
-        cmbLang.SelectedIndexChanged += (_, _) =>
+        cmbLang.SelectedIndexChanged += async (_, _) =>
         {
             if (_loadingLang) return;
             Strings.SetLang(cmbLang.SelectedIndex == 1 ? "en" : "zh");
             ApplyLanguage();
-            RefreshState();
+            await RefreshAsync();
         };
+
+        barBusy = new ProgressBar
+        {
+            Dock = DockStyle.Bottom,
+            Height = 12,
+            Style = ProgressBarStyle.Marquee,
+            MarqueeAnimationSpeed = 30,
+            Visible = false,
+        };
+        Controls.Add(barBusy);
 
         Controls.AddRange(new Control[] { grp, btnOK, btnRefresh, btnExport, lblStatus, txtState, txtLog });
     }
@@ -98,16 +113,24 @@ public partial class MainForm : Form
         _loadingLang = false;
     }
 
-    private void RefreshState()
+    private async Task RefreshAsync()
     {
+        SetBusy(false);
+        barBusy.Visible = true;
         try
         {
-            var (status, detail) = UpdateManager.GetUpdateStatus();
+            var (status, _, body, isDis, isOk) = await Task.Run(() =>
+            {
+                var st = UpdateManager.GetUpdateStatus();
+                string head = UpdateManager.IsAdministrator() ? Strings.HeadAdmin : Strings.HeadNonAdmin;
+                string b = head + Strings.StateNow(st.Status, st.Detail) + "\r\n"
+                    + UpdateManager.DescribeState();
+                return (st.Status, st.Detail, b,
+                    st.Status == Strings.StDisabled, st.Status == Strings.StNormal);
+            });
             lblStatus.Text = status;
-            lblStatus.ForeColor = status == Strings.StDisabled ? Color.Red
-                : status == Strings.StNormal ? Color.Green : Color.Orange;
-            string head = UpdateManager.IsAdministrator() ? Strings.HeadAdmin : Strings.HeadNonAdmin;
-            txtState.Text = head + Strings.StateNow(status, detail) + "\r\n" + UpdateManager.DescribeState();
+            lblStatus.ForeColor = isDis ? Color.Red : isOk ? Color.Green : Color.Orange;
+            txtState.Text = body;
         }
         catch (Exception ex)
         {
@@ -115,6 +138,8 @@ public partial class MainForm : Form
             lblStatus.ForeColor = Color.Gray;
             txtState.Text = Strings.StateReadFail + ex.Message;
         }
+        barBusy.Visible = false;
+        SetBusy(true);
     }
 
     private async Task RunSelectedAsync()
@@ -134,8 +159,7 @@ public partial class MainForm : Form
         {
             Log("[ERROR] " + ex.Message);
         }
-        RefreshState();
-        SetBusy(true);
+        await RefreshAsync();
     }
 
     private void SetBusy(bool enabled)
