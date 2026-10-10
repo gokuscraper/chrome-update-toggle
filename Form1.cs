@@ -23,6 +23,13 @@ public partial class MainForm : Form
     {
         InitializeComponent();
         ApplyLanguage();
+        try
+        {
+            using var s = System.Reflection.Assembly.GetExecutingAssembly()
+                .GetManifestResourceStream("ChromeUpdateToggle.app.ico");
+            if (s != null) Icon = new Icon(s);
+        }
+        catch { /* 无图标不影响运行 */ }
         // 秒开: 先摆占位, 等窗口画完再异步检测
         lblStatus.Text = Strings.Checking;
         lblStatus.ForeColor = Color.Gray;
