@@ -1,3 +1,5 @@
+using System.Diagnostics;
+
 namespace ChromeUpdateToggle;
 
 public partial class MainForm : Form
@@ -7,6 +9,7 @@ public partial class MainForm : Form
     private RadioButton rbEnable = null!;
     private ComboBox cmbLang = null!;
     private Label lblAuthor = null!;
+    private LinkLabel lnkRepo = null!;
     private Button btnOK = null!;
     private Button btnRefresh = null!;
     private Button btnExport = null!;
@@ -34,42 +37,53 @@ public partial class MainForm : Form
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
 
-        grp = new GroupBox { Location = new Point(12, 8), Size = new Size(594, 60) };
-        rbDisable = new RadioButton { Location = new Point(20, 24), Size = new Size(130, 24), Checked = true };
-        rbEnable = new RadioButton { Location = new Point(155, 24), Size = new Size(130, 24) };
+        grp = new GroupBox { Location = new Point(12, 8), Size = new Size(594, 76) };
+        rbDisable = new RadioButton { Location = new Point(20, 22), Size = new Size(130, 24), Checked = true };
+        rbEnable = new RadioButton { Location = new Point(155, 22), Size = new Size(130, 24) };
         cmbLang = new ComboBox
         {
-            Location = new Point(290, 24), Size = new Size(110, 24),
+            Location = new Point(290, 22), Size = new Size(110, 24),
             DropDownStyle = ComboBoxStyle.DropDownList,
         };
         cmbLang.Items.AddRange(new object[] { Strings.LangZh, Strings.LangEn });
         lblAuthor = new Label
         {
-            Location = new Point(414, 24),
-            Size = new Size(170, 24),
+            Location = new Point(414, 22),
+            Size = new Size(170, 22),
             TextAlign = ContentAlignment.MiddleRight,
             ForeColor = Color.Gray,
         };
-        grp.Controls.AddRange(new Control[] { rbDisable, rbEnable, cmbLang, lblAuthor });
+        lnkRepo = new LinkLabel
+        {
+            Location = new Point(20, 48),
+            Size = new Size(564, 20),
+            Text = "GitHub: " + Strings.RepoUrl,
+        };
+        lnkRepo.LinkClicked += (_, _) =>
+        {
+            try { Process.Start(new ProcessStartInfo(Strings.RepoUrl) { UseShellExecute = true }); }
+            catch (Exception ex) { Log("[ERROR] " + ex.Message); }
+        };
+        grp.Controls.AddRange(new Control[] { rbDisable, rbEnable, cmbLang, lblAuthor, lnkRepo });
 
-        btnOK = new Button { Location = new Point(12, 76), Size = new Size(140, 36) };
-        btnRefresh = new Button { Location = new Point(160, 76), Size = new Size(140, 36) };
-        btnExport = new Button { Location = new Point(486, 76), Size = new Size(120, 36) };
+        btnOK = new Button { Location = new Point(12, 92), Size = new Size(140, 36) };
+        btnRefresh = new Button { Location = new Point(160, 92), Size = new Size(140, 36) };
+        btnExport = new Button { Location = new Point(486, 92), Size = new Size(120, 36) };
         lblStatus = new Label
         {
-            Location = new Point(320, 76), Size = new Size(158, 36),
+            Location = new Point(320, 92), Size = new Size(158, 36),
             Font = new Font(Font.FontFamily, 14, FontStyle.Bold),
             TextAlign = ContentAlignment.MiddleLeft,
         };
 
         txtState = new TextBox
         {
-            Location = new Point(12, 120), Size = new Size(594, 130),
+            Location = new Point(12, 136), Size = new Size(594, 130),
             Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Vertical,
         };
         txtLog = new TextBox
         {
-            Location = new Point(12, 258), Size = new Size(594, 246),
+            Location = new Point(12, 274), Size = new Size(594, 230),
             Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Both,
             WordWrap = false, Font = new Font("Consolas", 9),
         };
