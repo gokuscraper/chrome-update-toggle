@@ -7,7 +7,7 @@ namespace ChromeUpdateToggle;
 /// <summary>常驻文件日志 + 版本信息 + 诊断包导出。</summary>
 public static class Logger
 {
-    public const string Version = "1.2.0";
+    public const string Version = "1.3.0";
 
     private static readonly object Gate = new();
     private static string LogDir => Path.Combine(AppContext.BaseDirectory, "logs");
